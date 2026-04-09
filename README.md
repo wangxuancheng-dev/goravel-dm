@@ -96,6 +96,24 @@ go test -tags dm ./driver/dm/... -run TestDMCrudAndTransaction -v
 replace dm => ../dm8/drivers/go/dm
 ```
 
+### 项目已验证示例（Windows）
+
+如果达梦安装在 `E:/dmdbms`，可按以下方式配置并验证：
+
+```go
+replace dm => E:/dmdbms/drivers/go/dm
+```
+
+```bash
+go build -tags dm ./...
+go test -tags dm ./driver/dm/... -run TestDMCrudAndTransaction -v
+go run -tags dm .
+```
+
+如果 `E:/dmdbms/drivers/go/dm` 不存在，请先解压：
+
+- `E:/dmdbms/drivers/go/dm-go-driver.zip` -> `E:/dmdbms/drivers/go/dm`
+
 ## 备注
 
 当前 `driver/dm` 已包含完整方言实现（`dialector.go`、`create.go`、`migrator.go`），不再依赖 `driver/dm-test`。
