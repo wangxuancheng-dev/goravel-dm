@@ -33,6 +33,14 @@ func NewGrammar(prefix string) *Grammar {
 		serials:           []string{"bigInteger", "integer", "mediumInteger", "smallInteger", "tinyInteger"},
 		wrap:              schema.NewWrap(prefix),
 	}
+	grammar.wrap.SetValueWrapper(func(value string) string {
+		if value == "*" {
+			return value
+		}
+		// Normalize identifiers to uppercase to avoid DM case-sensitivity pitfalls
+		// when framework SQL mixes quoted and unquoted column references.
+		return `"` + strings.ToUpper(strings.ReplaceAll(value, `"`, `""`)) + `"`
+	})
 	grammar.modifiers = []func(driver.Blueprint, driver.ColumnDefinition) string{
 		grammar.ModifyDefault,
 		grammar.ModifyIncrement,
@@ -81,7 +89,7 @@ func (r *Grammar) CompileColumns(schema, table string) (string, error) {
         '' AS collation,
         CASE c.NULLABLE WHEN 'Y' THEN 1 ELSE 0 END AS nullable,
         c.DATA_DEFAULT AS default,
-        cc.COMMENTS AS comment
+        cc.COMMENTS AS "comment"
 FROM ALL_TAB_COLUMNS c
 LEFT JOIN ALL_COL_COMMENTS cc
   ON cc.OWNER = c.OWNER AND cc.TABLE_NAME = c.TABLE_NAME AND cc.COLUMN_NAME = c.COLUMN_NAME
@@ -382,7 +390,7 @@ func (r *Grammar) CompileTables(_ string) string {
   t.TABLE_NAME AS name,
   t.OWNER AS "schema",
   0 AS size,
-  tc.COMMENTS AS comment
+  tc.COMMENTS AS "comment"
 FROM ALL_TABLES t
 LEFT JOIN ALL_TAB_COMMENTS tc
   ON tc.OWNER = t.OWNER AND tc.TABLE_NAME = t.TABLE_NAME
