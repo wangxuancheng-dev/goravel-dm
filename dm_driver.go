@@ -110,13 +110,11 @@ func dsn(fullConfig contracts.FullConfig) string {
 		b.WriteByte(':')
 		b.WriteString(strconv.Itoa(fullConfig.Port))
 	}
-	catalog := fullConfig.Database
-	if catalog == "" {
-		catalog = fullConfig.Schema
-	}
-	if catalog != "" {
+	// Optional path segment: DM *schema* (driver "catalog"). Instance/service names (e.g. DAMENG) are not valid here (-2103).
+	// Only append when DB_SCHEMA is set; otherwise omit the path and use the login user's default schema.
+	if fullConfig.Schema != "" {
 		b.WriteByte('/')
-		b.WriteString(catalog)
+		b.WriteString(fullConfig.Schema)
 	}
 	return b.String()
 }

@@ -57,8 +57,9 @@ go get github.com/wangxuancheng-dev/goravel-dm@latest
   "database":  config.Env("DB_DATABASE", "SYSDBA"),
   "username":  config.Env("DB_USERNAME", "SYSDBA"),
   "password":  config.Env("DB_PASSWORD", "SYSDBA"),
-  "schema":    config.Env("DB_SCHEMA", "SYSDBA"),
-  // 可选。留空时由 host/port/username/password/database(schema) 自动拼成官方要求的 dm://... DSN
+  // 非空时自动 DSN 追加 /模式名；留空则不拼路径（用登录用户默认模式，避免把 DB_DATABASE 里的实例名误写入 URL）
+  "schema":    config.Env("DB_SCHEMA", ""),
+  // 可选。留空时由 host/port/username/password 与可选 schema 自动拼成 dm://... DSN
   "dsn":       config.Env("DB_DSN", ""),
   "gorm_mode": config.Env("DB_GORM_MODE", 0), // dm兼容=0; mysql兼容=1
   "prefix":    "",
@@ -75,10 +76,14 @@ go get github.com/wangxuancheng-dev/goravel-dm@latest
 
 ```env
 DB_CONNECTION=dm
-# 可不写 DB_DSN，则会自动生成 dm://user:pass@host:port/database
-# 若手写，必须以 dm:// 开头（达梦官方驱动要求）
-# DB_DSN=dm://SYSDBA:yourpass@127.0.0.1:5236/DAMENG
+# 可不写 DB_DSN：默认生成 dm://user:pass@host:port（无尾部路径，使用登录用户默认模式）
+# 若必须在 URL 里指定模式：DB_SCHEMA=SYSDBA（须为库中真实存在的模式名，不要填实例名 DAMENG）
+# DB_DSN=dm://SYSDBA:yourpass@127.0.0.1:5236/SYSDBA
 ```
+
+### 错误 -2103「无效的模式名」
+
+常见原因是 DSN 末尾的 **模式名** 写成了 **实例/服务名**（如 `DAMENG`），而达梦只接受 **已创建的模式**。自动 DSN **不再**把 `DB_DATABASE` 拼进 URL，因此仅配 `DB_DATABASE=DAMENG` 一般不会触发该问题；若手写 `DB_DSN` 或设置了 `DB_SCHEMA`，请改为真实模式（如 `SYSDBA`）。
 
 ## 构建开关（重要）
 
