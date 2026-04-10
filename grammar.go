@@ -377,9 +377,10 @@ func (r *Grammar) CompileSharedLockForGorm() clause.Expression {
 	return clause.Locking{Strength: "SHARE"}
 }
 func (r *Grammar) CompileTables(_ string) string {
+	// "schema" is a reserved word in DM; quoted alias matches driver.Table.Schema on Scan.
 	return `SELECT
   t.TABLE_NAME AS name,
-  t.OWNER AS schema,
+  t.OWNER AS "schema",
   0 AS size,
   tc.COMMENTS AS comment
 FROM ALL_TABLES t
@@ -394,7 +395,7 @@ func (r *Grammar) CompileTableComment(blueprint driver.Blueprint, command *drive
 func (r *Grammar) CompileTypes() string {
 	return `SELECT
   '' AS name,
-  '' AS schema,
+  '' AS "schema",
   '' AS type,
   '' AS category,
   1 AS implicit
@@ -410,7 +411,7 @@ func (r *Grammar) CompileVersion() string {
 func (r *Grammar) CompileViews(_ string) string {
 	return `SELECT
   v.VIEW_NAME AS name,
-  v.OWNER AS schema,
+  v.OWNER AS "schema",
   v.TEXT AS definition
 FROM ALL_VIEWS v
 WHERE v.OWNER NOT IN ('SYS', 'SYSTEM')
@@ -487,9 +488,9 @@ func (r *Grammar) ModifyIncrement(blueprint driver.Blueprint, column driver.Colu
 }
 func (r *Grammar) TypeBigInteger(column driver.ColumnDefinition) string {
 	if column.GetAutoIncrement() && !column.IsChange() && !column.IsSetGeneratedAs() {
-		return "bigserial"
+		return "BIGINT IDENTITY(1,1)"
 	}
-	return "bigint"
+	return "BIGINT"
 }
 func (r *Grammar) TypeBoolean(driver.ColumnDefinition) string { return "boolean" }
 func (r *Grammar) TypeChar(column driver.ColumnDefinition) string {
@@ -522,9 +523,9 @@ func (r *Grammar) TypeFloat(column driver.ColumnDefinition) string {
 }
 func (r *Grammar) TypeInteger(column driver.ColumnDefinition) string {
 	if column.GetAutoIncrement() && !column.IsChange() && !column.IsSetGeneratedAs() {
-		return "serial"
+		return "INT IDENTITY(1,1)"
 	}
-	return "integer"
+	return "INT"
 }
 func (r *Grammar) TypeJson(driver.ColumnDefinition) string  { return "json" }
 func (r *Grammar) TypeJsonb(driver.ColumnDefinition) string { return "json" }
@@ -537,9 +538,9 @@ func (r *Grammar) TypeMediumInteger(column driver.ColumnDefinition) string {
 func (r *Grammar) TypeMediumText(driver.ColumnDefinition) string { return "text" }
 func (r *Grammar) TypeSmallInteger(column driver.ColumnDefinition) string {
 	if column.GetAutoIncrement() && !column.IsChange() && !column.IsSetGeneratedAs() {
-		return "smallserial"
+		return "SMALLINT IDENTITY(1,1)"
 	}
-	return "smallint"
+	return "SMALLINT"
 }
 func (r *Grammar) TypeString(column driver.ColumnDefinition) string {
 	length := column.GetLength()
