@@ -5,7 +5,7 @@ import (
 
 	"github.com/goravel/framework/contracts/config"
 
-	"github.com/wangxuancheng-dev/goravel-dm/contracts"
+	"goravel/driver/dm/contracts"
 )
 
 type ConfigBuilder struct {

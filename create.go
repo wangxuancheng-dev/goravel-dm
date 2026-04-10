@@ -474,7 +474,7 @@ func MergeCreate(db *gorm.DB, onConflict clause.OnConflict, values clause.Values
 		db.Statement.WriteString(" FROM DUAL")
 	}
 
-	db.Statement.WriteString(") AS \"excluded\" (")
+	db.Statement.WriteString(") EXCLUDED (")
 	for idx, column := range values.Columns {
 		if idx > 0 {
 			db.Statement.WriteByte(',')
@@ -483,14 +483,14 @@ func MergeCreate(db *gorm.DB, onConflict clause.OnConflict, values clause.Values
 	}
 	db.Statement.WriteString(") ON ")
 
-	var where clause.Where
-	for _, field := range db.Statement.Schema.PrimaryFields {
-		where.Exprs = append(where.Exprs, clause.Eq{
-			Column: clause.Column{Table: db.Statement.Table, Name: field.DBName},
-			Value:  clause.Column{Table: "excluded", Name: field.DBName},
-		})
+	for idx, field := range db.Statement.Schema.PrimaryFields {
+		if idx > 0 {
+			db.Statement.WriteString(" AND ")
+		}
+		db.Statement.WriteQuoted(clause.Column{Table: db.Statement.Table, Name: field.DBName})
+		db.Statement.WriteString(" = EXCLUDED.")
+		db.Statement.WriteQuoted(field.DBName)
 	}
-	where.Build(db.Statement)
 
 	if len(onConflict.DoUpdates) > 0 {
 		// 将UPDATE子句中出现在关联条件中的列去除（即上面的ON子句），否则会报错：-4064:不能更新关联条件中的列
@@ -533,10 +533,8 @@ func MergeCreate(db *gorm.DB, onConflict clause.OnConflict, values clause.Values
 				db.Statement.WriteByte(',')
 			}
 			written = true
-			db.Statement.WriteQuoted(clause.Column{
-				Table: "excluded",
-				Name:  column.Name,
-			})
+			db.Statement.WriteString("EXCLUDED.")
+			db.Statement.WriteQuoted(column.Name)
 		}
 	}
 

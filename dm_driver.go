@@ -15,7 +15,7 @@ import (
 	"github.com/goravel/framework/errors"
 	"gorm.io/gorm"
 
-	"github.com/wangxuancheng-dev/goravel-dm/contracts"
+	"goravel/driver/dm/contracts"
 )
 
 const (

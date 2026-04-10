@@ -57,16 +57,9 @@ func (r *Grammar) CompileAdd(blueprint driver.Blueprint, command *driver.Command
 }
 
 func (r *Grammar) CompileChange(blueprint driver.Blueprint, command *driver.Command) []string {
-	changes := []string{fmt.Sprintf("alter column %s type %s", r.wrap.Column(command.Column.GetName()), schema.ColumnType(r, command.Column))}
-	for _, modifier := range r.modifiers {
-		if change := modifier(blueprint, command.Column); change != "" {
-			changes = append(changes, fmt.Sprintf("alter column %s%s", r.wrap.Column(command.Column.GetName()), change))
-		}
-	}
+	definition := fmt.Sprintf("%s %s", r.wrap.Column(command.Column.GetName()), schema.ColumnType(r, command.Column))
 
-	return []string{
-		fmt.Sprintf("alter table %s %s", r.wrap.Table(blueprint.GetTableName()), strings.Join(changes, ", ")),
-	}
+	return []string{fmt.Sprintf("alter table %s modify (%s)", r.wrap.Table(blueprint.GetTableName()), definition)}
 }
 
 func (r *Grammar) CompileColumns(schema, table string) (string, error) {
@@ -81,7 +74,7 @@ func (r *Grammar) CompileColumns(schema, table string) (string, error) {
 	}
 
 	return fmt.Sprintf(
-		`SELECT c.COLUMN_NAME AS name,
+		`SELECT LOWER(c.COLUMN_NAME) AS name,
         c.DATA_TYPE AS type_name,
         CASE
           WHEN c.DATA_TYPE IN ('CHAR','NCHAR','VARCHAR','VARCHAR2','NVARCHAR2')
@@ -135,8 +128,10 @@ func (r *Grammar) CompileDropAllTables(schema string, tables []driver.Table) []s
 	_ = schema
 	var dropTables []string
 	for _, table := range tables {
-		qualifiedName := fmt.Sprintf("%s.%s", table.Schema, table.Name)
-		trimmedTableName := strings.Trim(table.Name, `"`)
+		schemaName := strings.ToUpper(strings.Trim(table.Schema, `"'`))
+		tableName := strings.ToUpper(strings.Trim(table.Name, `"'`))
+		qualifiedName := fmt.Sprintf("%s.%s", schemaName, tableName)
+		trimmedTableName := tableName
 		isSystemTable := strings.HasPrefix(trimmedTableName, "##")
 		isExcludedTable := slices.Contains(excludedTables, qualifiedName) || slices.Contains(excludedTables, table.Name)
 		if !isExcludedTable && !isSystemTable {
@@ -178,12 +173,18 @@ func (r *Grammar) CompileDropAllViews(schema string, views []driver.View) []stri
 	_ = schema
 	var dropViews []string
 	for _, view := range views {
-		dropViews = append(dropViews, fmt.Sprintf("%s.%s", view.Schema, view.Name))
+		schemaName := strings.ToUpper(strings.Trim(view.Schema, `"'`))
+		viewName := strings.ToUpper(strings.Trim(view.Name, `"'`))
+		dropViews = append(dropViews, fmt.Sprintf("%s.%s", schemaName, viewName))
 	}
 	if len(dropViews) == 0 {
 		return nil
 	}
-	return []string{fmt.Sprintf("drop view %s", strings.Join(r.EscapeNames(dropViews), ", "))}
+	sql := make([]string, 0, len(dropViews))
+	for _, view := range dropViews {
+		sql = append(sql, fmt.Sprintf("drop view %s", strings.Join(r.EscapeNames([]string{view}), ", ")))
+	}
+	return sql
 }
 
 func (r *Grammar) CompileDropColumn(blueprint driver.Blueprint, command *driver.Command) []string {
@@ -224,6 +225,16 @@ func (r *Grammar) CompileForeign(blueprint driver.Blueprint, command *driver.Com
 }
 
 func (r *Grammar) CompileForeignKeys(schema, table string) string {
+	schema, table, err := parseSchemaAndTable(table, schema)
+	if err != nil {
+		return ""
+	}
+	table = r.prefix + table
+	schemaExpr := "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"
+	if schema != "" {
+		schemaExpr = r.wrap.Quote(strings.ToUpper(schema))
+	}
+
 	return fmt.Sprintf(
 		`SELECT
   uc.CONSTRAINT_NAME AS name,
@@ -244,7 +255,7 @@ WHERE uc.CONSTRAINT_TYPE = 'R'
   AND uc.OWNER = %s
   AND uc.TABLE_NAME = %s
 GROUP BY uc.CONSTRAINT_NAME, ruc.OWNER, ruc.TABLE_NAME, uc.DELETE_RULE`,
-		r.wrap.Quote(strings.ToUpper(schema)), r.wrap.Quote(strings.ToUpper(table)))
+		schemaExpr, r.wrap.Quote(strings.ToUpper(table)))
 }
 
 func (r *Grammar) CompileFullText(blueprint driver.Blueprint, command *driver.Command) string {
@@ -272,6 +283,10 @@ func (r *Grammar) CompileIndexes(schema, table string) (string, error) {
 		return "", err
 	}
 	table = r.prefix + table
+	schemaExpr := "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"
+	if schema != "" {
+		schemaExpr = r.wrap.Quote(strings.ToUpper(schema))
+	}
 	return fmt.Sprintf(
 		`SELECT
   ui.INDEX_NAME AS name,
@@ -293,7 +308,7 @@ JOIN ALL_IND_COLUMNS uic
 WHERE ui.OWNER = %s
   AND ui.TABLE_NAME = %s
 GROUP BY ui.OWNER, ui.TABLE_NAME, ui.INDEX_NAME, ui.INDEX_TYPE, ui.UNIQUENESS`,
-		r.wrap.Quote(strings.ToUpper(schema)), r.wrap.Quote(strings.ToUpper(table)),
+		schemaExpr, r.wrap.Quote(strings.ToUpper(table)),
 	), nil
 }
 
@@ -395,7 +410,7 @@ func (r *Grammar) CompileSharedLockForGorm() clause.Expression {
 func (r *Grammar) CompileTables(_ string) string {
 	// "schema" is a reserved word in DM; quoted alias matches driver.Table.Schema on Scan.
 	return `SELECT
-  t.TABLE_NAME AS name,
+  LOWER(t.TABLE_NAME) AS name,
   t.OWNER AS "schema",
   0 AS size,
   tc.COMMENTS AS "comment"
@@ -426,7 +441,7 @@ func (r *Grammar) CompileVersion() string {
 }
 func (r *Grammar) CompileViews(_ string) string {
 	return `SELECT
-  v.VIEW_NAME AS name,
+  LOWER(v.VIEW_NAME) AS name,
   v.OWNER AS "schema",
   v.TEXT AS definition
 FROM ALL_VIEWS v
