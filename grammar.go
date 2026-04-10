@@ -75,6 +75,10 @@ func (r *Grammar) CompileColumns(schema, table string) (string, error) {
 		return "", err
 	}
 	table = r.prefix + table
+	schemaExpr := "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"
+	if schema != "" {
+		schemaExpr = r.wrap.Quote(strings.ToUpper(schema))
+	}
 
 	return fmt.Sprintf(
 		`SELECT c.COLUMN_NAME AS name,
@@ -86,15 +90,15 @@ func (r *Grammar) CompileColumns(schema, table string) (string, error) {
             THEN c.DATA_TYPE || '(' || c.DATA_PRECISION || ',' || c.DATA_SCALE || ')'
           ELSE c.DATA_TYPE
         END AS type,
-        '' AS collation,
+        '' AS "collation",
         CASE c.NULLABLE WHEN 'Y' THEN 1 ELSE 0 END AS nullable,
-        c.DATA_DEFAULT AS default,
+        c.DATA_DEFAULT AS "default",
         cc.COMMENTS AS "comment"
 FROM ALL_TAB_COLUMNS c
 LEFT JOIN ALL_COL_COMMENTS cc
   ON cc.OWNER = c.OWNER AND cc.TABLE_NAME = c.TABLE_NAME AND cc.COLUMN_NAME = c.COLUMN_NAME
 WHERE c.OWNER = %s AND c.TABLE_NAME = %s
-ORDER BY c.COLUMN_ID`, r.wrap.Quote(strings.ToUpper(schema)), r.wrap.Quote(strings.ToUpper(table))), nil
+ORDER BY c.COLUMN_ID`, schemaExpr, r.wrap.Quote(strings.ToUpper(table))), nil
 }
 
 func (r *Grammar) CompileComment(blueprint driver.Blueprint, command *driver.Command) string {
@@ -128,20 +132,25 @@ func (r *Grammar) CompileDropAllDomains(domains []string) string {
 
 func (r *Grammar) CompileDropAllTables(schema string, tables []driver.Table) []string {
 	excludedTables := r.EscapeNames([]string{"spatial_ref_sys"})
-	escapedSchema := r.EscapeNames([]string{schema})[0]
+	_ = schema
 	var dropTables []string
 	for _, table := range tables {
 		qualifiedName := fmt.Sprintf("%s.%s", table.Schema, table.Name)
+		trimmedTableName := strings.Trim(table.Name, `"`)
+		isSystemTable := strings.HasPrefix(trimmedTableName, "##")
 		isExcludedTable := slices.Contains(excludedTables, qualifiedName) || slices.Contains(excludedTables, table.Name)
-		isInCurrentSchema := escapedSchema == r.EscapeNames([]string{table.Schema})[0]
-		if !isExcludedTable && isInCurrentSchema {
+		if !isExcludedTable && !isSystemTable {
 			dropTables = append(dropTables, qualifiedName)
 		}
 	}
 	if len(dropTables) == 0 {
 		return nil
 	}
-	return []string{fmt.Sprintf("drop table %s", strings.Join(r.EscapeNames(dropTables), ", "))}
+	sql := make([]string, 0, len(dropTables))
+	for _, table := range dropTables {
+		sql = append(sql, fmt.Sprintf("drop table %s", strings.Join(r.EscapeNames([]string{table}), ", ")))
+	}
+	return sql
 }
 
 func (r *Grammar) CompileDropAllTypes(schema string, types []driver.Type) []string {
@@ -166,11 +175,10 @@ func (r *Grammar) CompileDropAllTypes(schema string, types []driver.Type) []stri
 }
 
 func (r *Grammar) CompileDropAllViews(schema string, views []driver.View) []string {
+	_ = schema
 	var dropViews []string
 	for _, view := range views {
-		if schema == view.Schema {
-			dropViews = append(dropViews, fmt.Sprintf("%s.%s", view.Schema, view.Name))
-		}
+		dropViews = append(dropViews, fmt.Sprintf("%s.%s", view.Schema, view.Name))
 	}
 	if len(dropViews) == 0 {
 		return nil
@@ -394,7 +402,7 @@ func (r *Grammar) CompileTables(_ string) string {
 FROM ALL_TABLES t
 LEFT JOIN ALL_TAB_COMMENTS tc
   ON tc.OWNER = t.OWNER AND tc.TABLE_NAME = t.TABLE_NAME
-WHERE t.OWNER NOT IN ('SYS', 'SYSTEM')
+WHERE t.OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
 ORDER BY t.TABLE_NAME`
 }
 func (r *Grammar) CompileTableComment(blueprint driver.Blueprint, command *driver.Command) string {
@@ -422,7 +430,7 @@ func (r *Grammar) CompileViews(_ string) string {
   v.OWNER AS "schema",
   v.TEXT AS definition
 FROM ALL_VIEWS v
-WHERE v.OWNER NOT IN ('SYS', 'SYSTEM')
+WHERE v.OWNER = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
 ORDER BY v.VIEW_NAME`
 }
 func (r *Grammar) GetAttributeCommands() []string { return r.attributeCommands }
@@ -500,7 +508,7 @@ func (r *Grammar) TypeBigInteger(column driver.ColumnDefinition) string {
 	}
 	return "BIGINT"
 }
-func (r *Grammar) TypeBoolean(driver.ColumnDefinition) string { return "boolean" }
+func (r *Grammar) TypeBoolean(driver.ColumnDefinition) string { return "BIT" }
 func (r *Grammar) TypeChar(column driver.ColumnDefinition) string {
 	length := column.GetLength()
 	if length > 0 {
